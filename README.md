@@ -102,4 +102,95 @@ WS4REDIS_CONNECTION = {
 
 **Websocket for Redis**能够用WS4PREDIS_EXPIRE，此外还能够固定消息队列所发布的消息。这一点，有利于客户端应该能够在重新连接webscoket之后访问发布过的信息的情况，例如页面重新载入之后。  
 
-此命令在几秒钟之内设置数字，每个收到的消息都通过Redis来保存。
+此命令在几秒钟之内设置数字，每个收到的消息都通过Redis来保存，以及发布消息队列。  
+
+```python
+WS4REDIS_EXPIRE = 7200
+```
+
+**Webscoket for Redis**能够使用字符串对数据存储中的每个条目假如前缀。默认，这个前缀是空的。假如相同的Redis连接用来存储欠他类型的数据，为了避免名称的冲突，我们鼓励你对这些条目使用一个唯一字符串。  
+
+```python
+WS4REDIS_PREFIX = 'ws'
+```
+
+你可以利用一个定制的类来重写 `ws4redis.store.RedisStore`，当你需要的该类另外一种实现时。  
+
+```python
+WS4REDIS_SUBSCRIBER = 'myapp.redis_store.Redis-Subscriber'
+```
+
+该命令在开发和忽略生产环境的情况下要求使用。它重写了Django的内部主循环，并在request处理器的前面添加一个URL调度程序。  
+
+```python
+WSGI_APPLICATION = 'ws4redis.django_runserver.application'
+```
+
+确保你的模板上下文中至少包含下面这些处理器：  
+
+```python
+TEMPLATE_CONTEXT_PROCESSORS = (
+    ...
+    'django.contrib.auth.context_processors.auth',
+    'django.core.context_processors.static',
+    'ws4redis.context_processors.default',
+    ...
+)
+```
+
+### Check your Installation 安装的检查
+
+## Replace memcached with Redis 使用Redis替换memcached
+
+### Warning 警告
+
+# Running WebSocket for Redis
+
+## Django在开发模式中使用WebSocket for Redis
+
+### Note 注释
+
+## Django使用WebSocket for Redis作为独立的uWSGI服务器
+
+在此配置中，**uWSGI**有自己的主循环。为了区别常规请求与WebSocket，可以修改Python启动器模块，wsgi.py为：  
+
+```python
+import os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'myapp.settings')
+from django.conf import settings
+from django.core.wsgi import get_wsgi_application
+from ws4redis.uwsgi_runserver import uWSGIWebsocketServer
+
+_django_app = get_wsgi_application()
+_websocket_app = uWSGIWebsocketServer()
+
+def application(environ, start_response):
+    if environ.get('PATH_INFO').startswith(settings.WEBSOCKET_URL):
+            return _websocket_app(environ, start_response)
+    return _django_app(environ, start_response)
+```
+
+你可以利用下面的命令运行uWSGI作为一个独立的服务器：  
+
+```python
+uwsgi --virtualenv /path/to/virtaulenv --http :80 --gevent 100 --http-websockets --module wsgi
+```
+
+服务器会应答在80端口的Django和WebSocket的HTTP请求。这里，修改过的应用所调度动进入请求依赖于URL和Django处理器两者的任意一个，要么是进入到WebScoket的主循环中。  
+
+该配置配置适用于测试uWSGI和低流量的网站。因为uWSGI运行在一个线程／进程中，它会阻塞诸如访问数据库这类的调用，而且也会阻塞所有其他的HTTP请求。。。。
+
+### 提供静态文件服务
+在这个配置中，你不能够提供静态文件服务，因为Django不能够运行在调试模式，而且uWSGI也不知道如何服务于你所发布的静态文件。因此，在urls.py中添加模式staticfiles_urlpatterns：  
+
+```python
+from django.conf.urls import url, patterns, include
+from django.contrib.staticfiles.urls import staticfiles_urlpatterns
+
+urlpatterns = patterns('',
+    ....
+) + staticfiles_urlpatterns()
+```
+
+### Note 注释
+，一如下结所诉，不要忘了在升级为更具有扩展能力的配置时移除staticfiels_urlpatterns。  
